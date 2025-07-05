@@ -49,7 +49,8 @@ email-ledger-poc/
 
 <div align="center">
 ### Endpoint
-![Endpoind](preview/endpoint.png)
+![Endpoint](preview/endpoint.png)
+  
 ### Transaction Endpoind
 ![Transaction Endpoind](preview/preview%20(1).png)
 
