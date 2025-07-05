@@ -49,8 +49,8 @@ email-ledger-poc/
 
 <div align="center">
 
-### Transaction Endpoin
-![Transaction Endpoin](preview/preview%20(1).png)
+### Transaction Endpoind
+![Transaction Endpoind](preview/preview%20(1).png)
 
 ### GCP Gmail Endpoint Publish
 ![GCP Gmail Endpoint Publish](preview/preview%20(2).png)
