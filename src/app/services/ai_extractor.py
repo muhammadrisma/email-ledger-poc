@@ -4,11 +4,12 @@ from typing import Dict, Optional, List
 from openai import OpenAI
 from bs4 import BeautifulSoup
 from ..config import Config
+from ..prompts import FINANCIAL_EXTRACTION_PROMPT, EXPENSE_CLASSIFICATION_PROMPT
 
 class AIExtractor:
     def __init__(self):
         if not Config.OPENAI_API_KEY:
-            raise ValueError("OpenAI API key is required")
+            raise ValueError("OpenAI API key is required. Please set OPENAI_API_KEY environment variable or add it to your .env file.")
         self.client = OpenAI(api_key=Config.OPENAI_API_KEY)
         
     def extract_financial_data(self, email_content: Dict) -> Dict:
@@ -45,6 +46,35 @@ class AIExtractor:
         {email_content['html_body']}
         """
         
+        # Check if this is a forwarded email and include the full forwarded content
+        if 'Fwd:' in email_content.get('subject', '') or 'Fw:' in email_content.get('subject', ''):
+            body_text = f"{email_content.get('body', '')} {email_content.get('html_body', '')}"
+            
+            # Include the full forwarded email content
+            content += f"\n\n=== FORWARDED EMAIL CONTENT ===\n"
+            content += f"FULL FORWARDED EMAIL BODY:\n{body_text}\n"
+            
+            # Also extract specific patterns for debugging
+            forwarded_patterns = [
+                r'From:\s*([^\n]+)',
+                r'Sent:\s*([^\n]+)',
+                r'To:\s*([^\n]+)',
+                r'Subject:\s*([^\n]+)',
+                r'We charged\s+\$([\d,]+\.?\d*)',
+                r'charged\s+\$([\d,]+\.?\d*)',
+                r'credit card ending in (\d+)',
+                r'funded your ([^.]*)',
+            ]
+            
+            forwarded_info = []
+            for pattern in forwarded_patterns:
+                matches = re.findall(pattern, body_text, re.IGNORECASE)
+                if matches:
+                    forwarded_info.extend(matches)
+            
+            if forwarded_info:
+                content += f"\nEXTRACTED FORWARDED PATTERNS: {forwarded_info}\n"
+        
         if email_content.get('attachments'):
             content += "\n\n=== ATTACHMENTS ===\n"
             for i, attachment in enumerate(email_content['attachments'], 1):
@@ -53,7 +83,12 @@ class AIExtractor:
                     content += "  [FINANCIAL DOCUMENT - IMPORTANT TO EXTRACT DATA FROM]\n"
                 
                 if attachment.get('text_content'):
-                    content += f"  TEXT CONTENT:\n{attachment['text_content']}\n"
+                    # Special handling for PDF content
+                    if attachment.get('content_type') == 'application/pdf':
+                        content += f"  PDF TEXT CONTENT (CRITICAL FOR EXTRACTION):\n"
+                        content += f"  {attachment['text_content']}\n"
+                    else:
+                        content += f"  TEXT CONTENT:\n{attachment['text_content']}\n"
                 
                 if attachment.get('csv_data'):
                     content += f"  CSV DATA:\n{str(attachment['csv_data'])}\n"
@@ -63,92 +98,36 @@ class AIExtractor:
                 
                 content += "\n"
         
-        # Create the prompt for financial data extraction
-        prompt = f"""
-        Extract ALL financial transaction data from the following email and attachments.
+        # Use the imported prompt template
+        prompt = FINANCIAL_EXTRACTION_PROMPT.format(content=content)
         
-        REQUIRED FIELDS TO EXTRACT:
-        1. Date: Transaction date (from email date or document date)
-        2. Amount: Payment/transaction amount (look for numbers with currency symbols)
-        3. Currency: Currency code (USD, EUR, GBP, SGD, etc.) - look for currency symbols ($, €, £, SGD, etc.) or currency codes
-        4. Vendor: Company/merchant name
-        5. Transaction Type: "debit" (money going out) or "credit" (money coming in)
-        6. Reference ID: Order number, invoice number, transaction ID, or reference
-        7. Description: Clear description of what the transaction is for
+        print(f"DEBUG: Sending content to AI (first 500 chars): {content[:500]}...")
+        print(f"DEBUG: Email body length: {len(email_content.get('body', ''))}")
+        print(f"DEBUG: HTML body length: {len(email_content.get('html_body', ''))}")
+        print(f"DEBUG: Number of attachments: {len(email_content.get('attachments', []))}")
         
-        CRITICAL: PROCESS ALL ATTACHMENTS CAREFULLY
-        - PDF attachments often contain the most important financial data
-        - CSV files may contain transaction details
-        - Image files (PNG, JPG) may be receipts or invoices
-        - Extract amounts, dates, and vendor information from ALL attachments
-        - If email body is empty or unclear, focus on attachment content
-        - For invoice emails, the attachment usually contains the actual financial data
+        # Debug attachment content
+        for i, attachment in enumerate(email_content.get('attachments', [])):
+            print(f"DEBUG: Attachment {i+1}: {attachment.get('filename', 'unknown')}")
+            print(f"DEBUG: Attachment content type: {attachment.get('content_type', 'unknown')}")
+            print(f"DEBUG: Attachment text content length: {len(attachment.get('text_content', ''))}")
+            if attachment.get('text_content'):
+                print(f"DEBUG: Attachment text preview: {attachment['text_content'][:200]}...")
         
-        SPECIAL INSTRUCTIONS FOR INVOICE EMAILS:
-        - When email mentions "invoice attached" or similar, focus on attachment content
-        - Extract vendor name from sender domain or attachment content
-        - Look for invoice numbers, reference IDs in attachments
-        - Extract total amount from attachment (not email body)
-        - Use invoice date from attachment if available
-        
-        SPECIAL INSTRUCTIONS FOR HTML EMAILS:
-        - If the email contains a table (like a receipt or invoice), extract the line items, subtotal, tax, and total from the table.
-        - Use the total as the transaction amount.
-        - Extract the currency from the price column or total (e.g., SGD, USD, etc.).
-        - If the payment method and last digits are present, include them in the description.
-        - Use the vendor from the sender or the logo/company name in the email.
-        - If a customer number or reference is present, use it as the reference ID.
-        
-        CURRENCY DETECTION:
-        - Look for currency symbols: $ (USD), € (EUR), £ (GBP), SGD, etc.
-        - Look for currency codes: USD, EUR, GBP, SGD, etc.
-        - Look for currency words: dollars, euros, pounds, etc.
-        - If no currency is found, use USD as default
-        
-        AMOUNT DETECTION:
-        - Look for amounts in various formats ($100, 100 USD, €50, SGD 95.90, etc.)
-        - Check for "Total:", "Amount:", "Subtotal:", "Grand Total:" followed by numbers
-        - Look for amounts in tables, especially in the last row or "Total" row
-        - Check both email body AND all attachments for amounts
-        - For invoices, look for "Total Due:", "Amount Due:", "Invoice Total:"
-        
-        VENDOR DETECTION:
-        - Extract from sender domain (e.g., finops@earlybirdapp.co -> Earlybird)
-        - Look for company names in attachment content
-        - Check for vendor information in invoice headers
-        
-        IMPORTANT: 
-        - Process ALL attachments thoroughly - they often contain the financial data
-        - For invoice emails, the attachment is the primary source of financial data
-        - Extract vendor from sender domain or document content
-        - Determine transaction type based on context (invoice = debit, payment = debit, refund = credit)
-        - Find reference numbers (Order #123, Invoice #456, etc.)
-        - If multiple amounts found, use the largest/total amount
-        - For invoice emails, use "invoice" as transaction type if unclear
-        
-        Return the data in JSON format with the following structure:
-        {{
-            "date": "YYYY-MM-DD or null",
-            "amount": float or null,
-            "currency": "USD" or other currency code,
-            "vendor": "company name",
-            "transaction_type": "debit" or "credit",
-            "reference_id": "transaction reference",
-            "description": "transaction description"
-        }}
-        
-        Email content:
-        {content}
-        """
+        # Debug full content for forwarded emails
+        if 'Fwd:' in email_content.get('subject', '') or 'Fw:' in email_content.get('subject', ''):
+            print(f"DEBUG: This is a forwarded email")
+            print(f"DEBUG: Full content being sent to AI:")
+            print(f"DEBUG: {content}")
         
         try:
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "You are a financial data extraction specialist. Extract ALL required fields: Date, Amount, Currency, Vendor, Transaction Type, Reference ID, and Description. Be thorough and extract from both email body, HTML tables, and attachments. If a field cannot be found, use null or empty string. For currency, look for symbols ($, €, £, SGD) or codes (USD, EUR, GBP, SGD) and use USD as default if none found."},
+                    {"role": "system", "content": "You are a financial data extraction specialist. Extract ALL required fields: Date, Amount, Currency, Vendor, Transaction Type, Reference ID, and Description. Be thorough and extract from both email body, HTML tables, and attachments. If a field cannot be found, use null or empty string. For currency, look for symbols ($, €, £, SGD) or codes (USD, EUR, GBP, SGD) and use USD as default if none found. CRITICAL: If you find ANY amount mentioned in the email or attachments, extract it as a number. Do not return null for amount unless you are absolutely certain no amount is mentioned anywhere in the email or attachments."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.1,
+                temperature=0.3,
                 max_tokens=1200
             )
             
@@ -162,9 +141,10 @@ class AIExtractor:
                 else:
                     result = json.loads(result_text)
                     
-                print(f"Parsed JSON: {result}")
+                print(f"DEBUG: AI returned JSON: {result}")
+                print(f"DEBUG: Amount in AI response: {result.get('amount')}")
                 validated_result = self._validate_extraction_result(result, email_content)
-                print(f"Validated result: {validated_result}")
+                print(f"DEBUG: Validated result: {validated_result}")
                 return validated_result
                 
             except json.JSONDecodeError as e:
@@ -215,32 +195,11 @@ class AIExtractor:
         
         categories = ", ".join(Config.EXPENSE_CATEGORIES)
         
-        prompt = f"""
-        Classify this expense into one of the following categories:
-        {categories}
-        
-        Consider the vendor name, description, amount, and email content to determine the most appropriate category.
-        
-        Categories explained:
-        - meals_and_entertainment: Food, restaurants, entertainment
-        - transport: Uber, Lyft, gas, parking, public transport
-        - saas_subscriptions: Software subscriptions, online services
-        - travel: Flights, hotels, travel expenses
-        - office_supplies: Office materials, equipment
-        - utilities: Electricity, water, internet, phone bills
-        - insurance: Insurance payments
-        - professional_services: Legal, consulting, professional fees
-        - marketing: Advertising, marketing expenses
-        - other: Anything that doesn't fit above categories
-        
-        Return the result in JSON format:
-        {{
-            "category": "category_name"
-        }}
-        
-        Content to classify:
-        {content}
-        """
+        # Use the imported prompt template
+        prompt = EXPENSE_CLASSIFICATION_PROMPT.format(
+            categories=categories,
+            content=content
+        )
         
         try:
             response = self.client.chat.completions.create(
@@ -309,19 +268,59 @@ class AIExtractor:
         else:
             validated["date"] = email_content.get('date', '')
         
+        # Trust AI for amount extraction, only use regex as last resort
         if result.get("amount") is not None:
             try:
                 validated["amount"] = float(result["amount"])
-            except (ValueError, TypeError):
-                pass
-                
-        currency = result.get("currency", "USD")
-        if currency and currency.upper() in ["USD", "EUR", "GBP", "CAD", "AUD", "JPY", "CHF", "SEK", "NOK", "DKK"]:
-            validated["currency"] = currency.upper()
+                print(f"DEBUG: Successfully extracted amount from AI: {validated['amount']}")
+            except (ValueError, TypeError) as e:
+                print(f"DEBUG: Error converting AI amount '{result['amount']}': {e}")
+                validated["amount"] = None
         else:
+            print(f"DEBUG: AI returned null amount, trying simple regex fallback")
+            # Simple regex fallback for very obvious amount patterns
             text = f"{email_content.get('subject', '')} {email_content.get('body', '')} {email_content.get('html_body', '')}"
-            detected_currency = self._detect_currency_from_text(text)
-            validated["currency"] = detected_currency
+            for attachment in email_content.get('attachments', []):
+                if attachment.get('text_content'):
+                    text += f" {attachment['text_content']}"
+            
+            # Look for simple amount patterns
+            amount_patterns = [
+                r'\$([\d,]+\.?\d*)',
+                r'charged\s+\$([\d,]+\.?\d*)',
+                r'We charged\s+\$([\d,]+\.?\d*)',
+                r'paid\s+\$([\d,]+\.?\d*)',
+                r'payment\s+of\s+\$([\d,]+\.?\d*)',
+                r'amount[:\s]*\$([\d,]+\.?\d*)',
+                r'billed\s+\$([\d,]+\.?\d*)',
+                r'Total[:\s]*\$?([\d,]+\.?\d*)',
+                r'Amount[:\s]*\$?([\d,]+\.?\d*)',
+            ]
+            
+            for pattern in amount_patterns:
+                matches = re.findall(pattern, text, re.IGNORECASE)
+                if matches:
+                    try:
+                        amount_value = float(matches[0].replace(',', ''))
+                        validated["amount"] = amount_value
+                        print(f"DEBUG: Found amount via regex fallback: {amount_value}")
+                        break
+                    except Exception as e:
+                        print(f"DEBUG: Error in regex fallback: {e}")
+                        continue
+            
+            if validated["amount"] is None:
+                print(f"DEBUG: No amount found in regex fallback")
+                validated["amount"] = None
+                
+        # Trust AI for currency detection
+        currency = result.get("currency", "USD")
+        if currency and currency.upper() in ["USD", "EUR", "GBP", "CAD", "AUD", "JPY", "CHF", "SEK", "NOK", "DKK", "SGD"]:
+            validated["currency"] = currency.upper()
+            print(f"DEBUG: Using AI currency: {validated['currency']}")
+        else:
+            validated["currency"] = "USD"
+            print(f"DEBUG: Using default currency: USD")
             
         if result.get("vendor"):
             validated["vendor"] = str(result["vendor"])
@@ -344,59 +343,7 @@ class AIExtractor:
                 
         return validated
     
-    def _detect_currency_from_text(self, text: str) -> str:
-        """
-        Detect currency from text using pattern matching.
-        
-        Searches for currency symbols, codes, and words in the given text
-        to determine the appropriate currency code.
-        
-        Args:
-            text: Text content to search for currency indicators
-            
-        Returns:
-            Currency code (USD, EUR, GBP, etc.) or USD as default
-        """
-        text = text.upper()
-        
-        currency_patterns = [
-            (r'\$', 'USD'),
-            (r'€', 'EUR'),
-            (r'£', 'GBP'),
-            (r'C\$', 'CAD'),
-            (r'A\$', 'AUD'),
-            (r'¥', 'JPY'),
-            (r'CHF', 'CHF'),
-            (r'SEK', 'SEK'),
-            (r'NOK', 'NOK'),
-            (r'DKK', 'DKK'),
-        ]
-        
-        for pattern, currency in currency_patterns:
-            if re.search(pattern, text):
-                return currency
-        
-        currency_codes = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'SEK', 'NOK', 'DKK']
-        for code in currency_codes:
-            if re.search(rf'\b{code}\b', text):
-                return code
-        
-        currency_words = {
-            'DOLLAR': 'USD',
-            'EURO': 'EUR',
-            'POUND': 'GBP',
-            'YEN': 'JPY',
-            'FRANC': 'CHF',
-            'KRONA': 'SEK',
-            'KRONE': 'NOK',
-            'KRONE': 'DKK',
-        }
-        
-        for word, currency in currency_words.items():
-            if word in text:
-                return currency
-        
-        return "USD"
+
     
     def _fallback_extraction(self, email_content: Dict) -> Dict:
         """
@@ -418,16 +365,44 @@ class AIExtractor:
             email_content.get('html_body', '')
         ]
         
+        # For forwarded emails, prioritize the forwarded content
+        if 'Fwd:' in email_content.get('subject', '') or 'Fw:' in email_content.get('subject', ''):
+            # Look for forwarded email content patterns
+            body_text = f"{email_content.get('body', '')} {email_content.get('html_body', '')}"
+            forwarded_patterns = [
+                r'From:\s*([^\n]+)',
+                r'Sent:\s*([^\n]+)',
+                r'To:\s*([^\n]+)',
+                r'Subject:\s*([^\n]+)',
+                r'Hi\s+([^,]+),',
+                r'We charged\s+\$([\d,]+\.?\d*)',
+                r'charged\s+\$([\d,]+\.?\d*)',
+                r'credit card ending in (\d+)',
+                r'funded your ([^.]*)',
+            ]
+            
+            for pattern in forwarded_patterns:
+                matches = re.findall(pattern, body_text, re.IGNORECASE)
+                if matches:
+                    text_parts.insert(0, ' '.join(matches))
+        
         for attachment in email_content.get('attachments', []):
             if attachment.get('text_content'):
-                text_parts.insert(0, attachment['text_content'])
+                # For financial documents, prioritize attachment content
+                attachment_text = attachment['text_content']
+                # Look for amount patterns in attachment text
+                amount_matches = re.findall(r'[\$€£]?\s*([\d,]+\.?\d*)\s*(USD|EUR|GBP|SGD)?', attachment_text, re.IGNORECASE)
+                if amount_matches:
+                    text_parts.insert(0, attachment_text)
+                else:
+                    text_parts.append(attachment_text)
             if attachment.get('csv_data'):
                 csv_text = str(attachment['csv_data'])
                 text_parts.insert(0, csv_text)
         
         text = " ".join(text_parts)
         
-        html = email_content.get('html_body', '')
+        # Simplified fallback - just extract basic info without complex regex
         amount = None
         currency = "USD"
         vendor = ""
@@ -436,95 +411,38 @@ class AIExtractor:
         date = email_content.get('date', '')
         transaction_type = "debit"
         
-        for attachment in email_content.get('attachments', []):
-            if attachment.get('text_content') and not amount:
-                attachment_text = attachment['text_content']
-                amount_match = re.search(r'(?:Total|Amount|Subtotal|Grand Total)[:\s]*([\d,]+\.?\d*)', attachment_text, re.IGNORECASE)
-                if amount_match:
-                    try:
-                        amount = float(amount_match.group(1).replace(',', ''))
-                    except Exception:
-                        pass
-                
-                currency_match = re.search(r'(SGD|USD|EUR|GBP|\$|€|£)', attachment_text, re.IGNORECASE)
-                if currency_match:
-                    currency = currency_match.group(1).replace('$', 'USD').replace('€', 'EUR').replace('£', 'GBP')
-        
-        if html:
-            soup = BeautifulSoup(html, 'html.parser')
-            for row in soup.find_all('tr'):
-                cells = [c.get_text(strip=True) for c in row.find_all(['td', 'th'])]
-                if any('total' in cell.lower() for cell in cells):
-                    for cell in cells:
-                        match = re.search(r'(SGD|USD|EUR|GBP|\$|€|£)\s?([\d,.]+)', cell, re.IGNORECASE)
-                        if match:
-                            currency = match.group(1).replace('$', 'USD').replace('€', 'EUR').replace('£', 'GBP')
-                            try:
-                                amount = float(match.group(2).replace(',', ''))
-                            except Exception:
-                                pass
-                            break
-                if amount:
-                    break
-            if not vendor:
-                logo = soup.find('img', alt=True)
-                if logo and 'alt' in logo.attrs:
-                    vendor = logo['alt']
-            if not vendor:
-                for strong in soup.find_all(['strong', 'b']):
-                    if 'godaddy' in strong.get_text(strip=True).lower():
-                        vendor = 'GoDaddy'
-                        break
+        # Simple vendor extraction from sender
+        sender = email_content.get('sender', '')
+        if '@' in sender:
+            domain = sender.split('@')[1]
+            parts = domain.split('.')
+            if len(parts) >= 2:
+                company_part = parts[0] if parts[0] not in ['www', 'mail', 'smtp', 'finops', 'noreply', 'service'] else parts[1]
+                vendor = company_part.title()
+            else:
+                vendor = parts[0].title()
                         
-        if not amount:
-            amount_patterns = [
-                r'(SGD|USD|EUR|GBP|\$|€|£)\s?([\d,]+\.?\d*)',
-                r'([\d,]+\.?\d*)\s*(SGD|USD|EUR|GBP)',
-                r'Total[:\s]*([\d,]+\.?\d*)',
-                r'Amount[:\s]*([\d,]+\.?\d*)',
-                r'Total Due[:\s]*([\d,]+\.?\d*)',
-                r'Amount Due[:\s]*([\d,]+\.?\d*)',
-                r'Invoice Total[:\s]*([\d,]+\.?\d*)',
-                r'([\d,]+\.?\d*)\s*(dollars?|euros?|pounds?)',
-            ]
-            
-            for pattern in amount_patterns:
-                match = re.search(pattern, text, re.IGNORECASE)
-                if match:
-                    if match.group(1) in ['SGD', 'USD', 'EUR', 'GBP', '$', '€', '£']:
-                        currency = match.group(1).replace('$', 'USD').replace('€', 'EUR').replace('£', 'GBP')
-                        try:
-                            amount = float(match.group(2).replace(',', ''))
-                        except Exception:
-                            pass
+        # For forwarded emails, try to extract vendor from original sender
+        if 'Fwd:' in email_content.get('subject', '') or 'Fw:' in email_content.get('subject', ''):
+            body_text = f"{email_content.get('body', '')} {email_content.get('html_body', '')}"
+            from_match = re.search(r'From:\s*([^\n]+)', body_text, re.IGNORECASE)
+            if from_match:
+                original_sender = from_match.group(1)
+                if '@' in original_sender:
+                    original_domain = original_sender.split('@')[1]
+                    if 'openai' in original_domain.lower():
+                        vendor = 'OpenAI'
+                    elif 'stripe' in original_domain.lower():
+                        vendor = 'Stripe'
+                    elif 'paypal' in original_domain.lower():
+                        vendor = 'PayPal'
                     else:
-                        try:
-                            amount = float(match.group(1).replace(',', ''))
-                            if len(match.groups()) > 1 and match.group(2):
-                                currency = match.group(2).upper()
-                                if currency in ['DOLLARS', 'DOLLAR']:
-                                    currency = 'USD'
-                                elif currency in ['EUROS', 'EURO']:
-                                    currency = 'EUR'
-                                elif currency in ['POUNDS', 'POUND']:
-                                    currency = 'GBP'
-                        except Exception:
-                            pass
-                    if amount:
-                        break
-                        
-        if not vendor:
-            sender = email_content.get('sender', '')
-            if '@' in sender:
-                domain = sender.split('@')[1]
-                # Handle subdomains and extract company name
-                parts = domain.split('.')
-                if len(parts) >= 2:
-                    # For domains like finops@earlybirdapp.co -> Earlybird
-                    company_part = parts[0] if parts[0] not in ['www', 'mail', 'smtp', 'finops', 'noreply', 'service'] else parts[1]
-                    vendor = company_part.title()
-                else:
-                    vendor = parts[0].title()
+                        parts = original_domain.split('.')
+                        if len(parts) >= 2:
+                            company_part = parts[0] if parts[0] not in ['www', 'mail', 'smtp', 'noreply', 'service'] else parts[1]
+                            vendor = company_part.title()
+                        else:
+                            vendor = parts[0].title()
                 
         match = re.search(r'Customer Number[:#]?\s*(\w+)', text, re.IGNORECASE)
         if match:

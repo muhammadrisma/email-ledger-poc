@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.app.core.processor import EmailLedgerProcessor
-from src.app.db.models import create_tables
+from src.app.db.models import create_tables, reset_database
 
 def main():
     """
@@ -27,6 +27,7 @@ Examples:
   python -m src.cli.main process     # Process emails once
   python -m src.cli.main continuous  # Run continuous processing
   python -m src.cli.main setup       # Setup database tables
+  python -m src.cli.main reset       # Reset database (drops all data)
   python -m src.app.api.app          # Start API server
         """
     )
@@ -42,6 +43,13 @@ Examples:
     
     setup_parser = subparsers.add_parser("setup", help="Setup database tables")
     
+    reset_parser = subparsers.add_parser("reset", help="Reset database (drops all data)")
+    reset_parser.add_argument(
+        "--confirm", 
+        action="store_true", 
+        help="Skip confirmation prompt"
+    )
+    
     args = parser.parse_args()
     
     if not args.command:
@@ -53,6 +61,16 @@ Examples:
             print("Setting up database tables...")
             create_tables()
             print("Database tables created successfully!")
+            
+        elif args.command == "reset":
+            if not args.confirm:
+                response = input("This will delete ALL data in the database. Are you sure? (y/N): ")
+                if response.lower() != 'y':
+                    print("Database reset cancelled.")
+                    return
+            
+            print("Resetting database...")
+            reset_database()
             
         elif args.command == "process":
             print("Initializing Email Ledger Processor...")

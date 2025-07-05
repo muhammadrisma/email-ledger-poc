@@ -121,6 +121,28 @@ async def process_emails():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
+@router.post("/process-recent-emails", response_model=ProcessingResponse)
+async def process_recent_emails(
+    email_count: int = Query(10, ge=1, le=100, description="Number of recent emails to process")
+):
+    """
+    Process a specific number of recent emails.
+    
+    Fetches and processes the most recent emails from Gmail,
+    regardless of whether they've been processed before.
+    
+    Args:
+        email_count: Number of recent emails to process (1-100)
+        
+    Returns:
+        Processing result with statistics
+    """
+    try:
+        result = processor.process_recent_emails(email_count)
+        return ProcessingResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+
 @router.delete("/transactions/{transaction_id}")
 async def delete_transaction(
     transaction_id: int,

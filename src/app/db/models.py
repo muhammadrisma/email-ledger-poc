@@ -51,6 +51,23 @@ def create_tables():
     """
     Base.metadata.create_all(bind=engine)
 
+def reset_database():
+    """
+    Reset the database by dropping all tables and recreating them.
+    
+    This will delete all data in the database and recreate the schema
+    from scratch. Use with caution!
+    """
+    print("Dropping all tables...")
+    Base.metadata.drop_all(bind=engine)
+    print("All tables dropped successfully!")
+    
+    print("Creating all tables...")
+    Base.metadata.create_all(bind=engine)
+    print("All tables created successfully!")
+    
+    print("Database reset completed!")
+
 def get_db():
     """
     Get database session.

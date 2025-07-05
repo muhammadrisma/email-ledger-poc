@@ -60,11 +60,11 @@ class EmailLedgerProcessor:
                     has_financial_data = (
                         financial_data.get('amount') is not None or
                         (financial_data.get('vendor') and any(keyword in financial_data.get('vendor', '').lower() 
-                         for keyword in ['stripe', 'paypal', 'wise', 'bank', 'payment', 'invoice', 'receipt', 'billing'])) or
+                         for keyword in ['stripe', 'paypal', 'wise', 'bank', 'payment', 'invoice', 'receipt', 'billing', 'openai'])) or
                         any(keyword in email_content.get('subject', '').lower() 
-                            for keyword in ['invoice', 'receipt', 'bill', 'payment']) or
+                            for keyword in ['invoice', 'receipt', 'bill', 'payment', 'funded', 'charged']) or
                         any(keyword in email_content.get('body', '').lower() 
-                            for keyword in ['invoice attached', 'receipt attached', 'bill attached'])
+                            for keyword in ['invoice attached', 'receipt attached', 'bill attached', 'charged', 'funded', 'credit card'])
                     )
                     
                     if has_financial_data:
@@ -97,6 +97,86 @@ class EmailLedgerProcessor:
             
         except Exception as e:
             logger.error(f"Error in email processing: {e}")
+            raise
+        finally:
+            db.close()
+
+    def process_recent_emails(self, email_count: int) -> Dict:
+        """
+        Process a specific number of recent emails.
+        
+        Fetches the most recent emails from Gmail, extracts financial information
+        using AI, and saves transactions to the database. This method processes
+        emails regardless of whether they've been processed before.
+        
+        Args:
+            email_count: Number of recent emails to process
+            
+        Returns:
+            Dictionary containing processing statistics:
+            - processed_count: Number of emails processed
+            - successful_extractions: Number of successful financial extractions
+            - timestamp: Processing completion timestamp
+        """
+        logger.info(f"Starting processing of {email_count} recent emails...")
+        
+        try:
+            db = next(get_db())
+            
+            # Get recent emails directly from Gmail
+            recent_emails = self.email_processor.get_recent_emails(email_count)
+            logger.info(f"Found {len(recent_emails)} recent emails")
+            
+            processed_count = 0
+            successful_extractions = 0
+            
+            for email_content in recent_emails:
+                try:
+                    logger.info(f"Processing email: {email_content['subject']}")
+                    
+                    financial_data = self.ai_extractor.extract_financial_data(email_content)
+                    logger.info(f"Extracted financial data: {financial_data}")
+                    
+                    has_financial_data = (
+                        financial_data.get('amount') is not None or
+                        (financial_data.get('vendor') and any(keyword in financial_data.get('vendor', '').lower() 
+                         for keyword in ['stripe', 'paypal', 'wise', 'bank', 'payment', 'invoice', 'receipt', 'billing', 'openai'])) or
+                        any(keyword in email_content.get('subject', '').lower() 
+                            for keyword in ['invoice', 'receipt', 'bill', 'payment', 'funded', 'charged']) or
+                        any(keyword in email_content.get('body', '').lower() 
+                            for keyword in ['invoice attached', 'receipt attached', 'bill attached', 'charged', 'funded', 'credit card'])
+                    )
+                    
+                    if has_financial_data:
+                        classification = self.ai_extractor.classify_expense(email_content, financial_data)
+                        logger.info(f"Classification: {classification}")
+                        
+                        transaction = self.ledger_service.save_transaction(
+                            db, email_content, financial_data, classification
+                        )
+                        
+                        logger.info(f"Saved transaction: {transaction.amount} {transaction.currency} - {transaction.vendor}")
+                        successful_extractions += 1
+                    else:
+                        logger.info(f"No meaningful financial data found in email: {email_content['subject']}")
+                        logger.info(f"Email content preview: {email_content.get('body', '')[:200]}...")
+                    
+                    processed_count += 1
+                    
+                except Exception as e:
+                    logger.error(f"Error processing email {email_content.get('message_id', 'unknown')}: {e}")
+                    continue
+            
+            logger.info(f"Processing complete. Processed: {processed_count}, Successful: {successful_extractions}")
+            
+            return {
+                "processed_count": processed_count,
+                "successful_extractions": successful_extractions,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in recent email processing: {e}")
             raise
         finally:
             db.close()

@@ -91,7 +91,9 @@ email-ledger-poc/
 - PostgreSQL database
 - Gmail API credentials (credentials.json)
 - OpenAI API key
-
+#### **Set Up GCP Gmail API**
+- How to Create Gmail API App in the Google Developer Console: https://youtu.be/1Ua0Eplg75M?si=O61V_VunBO8i1INY
+- Save the the file as credentials.json in root folder
 #### 🐍 **Conda Environment Setup**
 If you use [Anaconda](https://www.anaconda.com/) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html), you can prepare your environment as follows:
 
@@ -283,8 +285,11 @@ curl http://localhost:8000/api/v1/transactions
 # Get summary statistics
 curl http://localhost:8000/api/v1/summary
 
-# Process emails via API
+# Process unprocessed emails via API
 curl -X POST http://localhost:8000/api/v1/process-emails
+
+# Process recent emails (specify count)
+curl -X POST "http://localhost:8000/api/v1/process-recent-emails?email_count=10"
 
 # Get transactions by category
 curl http://localhost:8000/api/v1/transactions/category/saas_subscriptions

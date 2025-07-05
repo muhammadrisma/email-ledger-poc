@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Database migration script to add missing columns.
+Database migration script to add missing columns and reset database.
 """
 
 from sqlalchemy import create_engine, text
 from ..config import Config
+from .models import Base
 
 def migrate_database():
     """Add missing columns to the database"""
@@ -42,5 +43,24 @@ def migrate_database():
             print("confidence_score column exists in database but not in model.")
             print("Consider adding it to the model or removing it from the database.")
 
+def reset_database():
+    """Reset the database by dropping all tables and recreating them"""
+    engine = create_engine(Config.DATABASE_URL)
+    
+    print("Dropping all tables...")
+    Base.metadata.drop_all(bind=engine)
+    print("All tables dropped successfully!")
+    
+    print("Creating all tables...")
+    Base.metadata.create_all(bind=engine)
+    print("All tables created successfully!")
+    
+    print("Database reset completed!")
+
 if __name__ == "__main__":
-    migrate_database() 
+    import sys
+    
+    if len(sys.argv) > 1 and sys.argv[1] == "reset":
+        reset_database()
+    else:
+        migrate_database() 

@@ -1,6 +1,6 @@
 # Email Ledger POC - Simple Makefile
 
-.PHONY: help install build test run api clean
+.PHONY: help install build test run api clean reset-db migrate
 
 help:
 	@echo "Email Ledger POC - Makefile Commands"
@@ -11,6 +11,7 @@ help:
 	@echo "make run       # Run the email processor once"
 	@echo "make api       # Start the API server"
 	@echo "make migrate   # Run database migrations"
+	@echo "make reset-db  # Reset database (drops all data)"
 	@echo "make clean     # Clean build artifacts"
 
 install:
@@ -30,6 +31,10 @@ api:
 
 migrate:
 	python -c "import sys; sys.path.insert(0, '.'); from src.app.db.migrate import migrate_database; migrate_database()"
+
+reset-db:
+	@echo "Resetting database..."
+	python -m src.cli.main reset --confirm
 
 clean:
 	rm -rf build/ dist/ *.egg-info/ __pycache__/ .pytest_cache/
