@@ -49,26 +49,23 @@ email-ledger-poc/
 
 <div align="center">
 
-### Email Processing Dashboard
-![Email Processing Dashboard](preview/preview%20(1).png)
+### Transaction Endpoin
+![Transaction Endpoin](preview/preview%20(1).png)
 
-### Transaction Management Interface
-![Transaction Management Interface](preview/preview%20(2).png)
+### GCP Gmail Endpoint Publish
+![GCP Gmail Endpoint Publish](preview/preview%20(2).png)
 
-### AI Classification Results
-![AI Classification Results](preview/preview%20(3).png)
+### GCP Gmail Endpoint Credential
+![GCP Gmail Endpoint Credential](preview/preview%20(4).png)
 
-### Financial Data Extraction
-![Financial Data Extraction](preview/preview%20(4).png)
+### Endpoint Process Email
+![Enpoint Process Email](preview/preview%20(5).png)
 
-### Ledger System Overview
-![Ledger System Overview](preview/preview%20(5).png)
+### Endpoint Health
+![Endpoint Health](preview/preview%20(6).png)
 
-### API Documentation
-![API Documentation](preview/preview%20(6).png)
-
-### Real-time Processing
-![Real-time Processing](preview/preview%20(7).png)
+### Endpoint Summary
+![Endpoint Summary](preview/preview%20(7).png)
 
 </div>
 
