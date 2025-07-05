@@ -313,7 +313,6 @@ class AIExtractor:
                 print(f"DEBUG: No amount found in regex fallback")
                 validated["amount"] = None
                 
-        # Trust AI for currency detection
         currency = result.get("currency", "USD")
         if currency and currency.upper() in ["USD", "EUR", "GBP", "CAD", "AUD", "JPY", "CHF", "SEK", "NOK", "DKK", "SGD"]:
             validated["currency"] = currency.upper()

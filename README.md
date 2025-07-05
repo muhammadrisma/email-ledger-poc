@@ -45,6 +45,33 @@ email-ledger-poc/
 └── README.md                   # This file
 ```
 
+## 📸 **Preview**
+
+<div align="center">
+
+### Email Processing Dashboard
+![Email Processing Dashboard](preview/preview%20(1).png)
+
+### Transaction Management Interface
+![Transaction Management Interface](preview/preview%20(2).png)
+
+### AI Classification Results
+![AI Classification Results](preview/preview%20(3).png)
+
+### Financial Data Extraction
+![Financial Data Extraction](preview/preview%20(4).png)
+
+### Ledger System Overview
+![Ledger System Overview](preview/preview%20(5).png)
+
+### API Documentation
+![API Documentation](preview/preview%20(6).png)
+
+### Real-time Processing
+![Real-time Processing](preview/preview%20(7).png)
+
+</div>
+
 ## 🎯 **Core Features Implemented:**
 
 #### 1. **Email Ingestion** ✅
@@ -477,11 +504,6 @@ Logs are output to stdout and can be configured via Python's logging module.
    export OPENAI_API_KEY=your_key_here
    python -c "from src.app.services.ai_extractor import AIExtractor; AIExtractor()"
    ```
-
-## 📝 **License**
-
-This project is licensed under the MIT License.
-
 ## 🤝 **Contributing**
 
 1. Fork the repository
@@ -509,6 +531,6 @@ The POC successfully addresses all requirements:
 - ✅ **Email Ingestion**: Gmail API integration with smart filtering
 - ✅ **Data Extraction**: AI-powered extraction with fallback patterns
 - ✅ **Live Ledger**: PostgreSQL database with REST API
-- ✅ **Expense Classification**: AI classification into 10 categories
+- ✅ **Expense Classification**: AI classification
 - ✅ **Production Ready**: Docker deployment, tests, documentation
 - ✅ **Modern Structure**: Clean package organization with best practices

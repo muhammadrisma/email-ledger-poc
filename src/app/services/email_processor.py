@@ -23,11 +23,9 @@ class EmailProcessor:
         """Get Gmail service using credentials directly"""
         creds = None
         
-        # Load existing token
         if Config.GMAIL_TOKEN_FILE and os.path.exists(Config.GMAIL_TOKEN_FILE):
             creds = Credentials.from_authorized_user_file(Config.GMAIL_TOKEN_FILE, Config.GMAIL_SCOPES)
         
-        # If no valid credentials, use credentials.json to get new token
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
@@ -39,7 +37,6 @@ class EmailProcessor:
                     Config.GMAIL_CREDENTIALS_FILE, Config.GMAIL_SCOPES)
                 creds = flow.run_local_server(port=8080)
             
-            # Save the credentials for next run
             if Config.GMAIL_TOKEN_FILE:
                 with open(Config.GMAIL_TOKEN_FILE, 'w') as token:
                     token.write(creds.to_json())
@@ -50,7 +47,6 @@ class EmailProcessor:
         """Check if email is from a financial service provider"""
         headers = message_data.get('payload', {}).get('headers', [])
         
-        # Extract sender and subject from headers
         sender = ""
         subject = ""
         
@@ -60,7 +56,6 @@ class EmailProcessor:
             elif header['name'].lower() == 'subject':
                 subject = header['value'].lower()
         
-        # Check sender patterns for financial services
         financial_senders = [
             'stripe.com', 'paypal.com', 'wise.com', 'bank.com',
             'receipt@', 'invoice@', 'payment@', 'billing@',
@@ -73,7 +68,6 @@ class EmailProcessor:
             if pattern in sender:
                 return True
         
-        # Check subject patterns for financial keywords
         financial_keywords = [
             'receipt', 'invoice', 'payment', 'transaction', 'charge',
             'billing', 'statement', 'confirmation', 'order', 'purchase',
@@ -87,16 +81,13 @@ class EmailProcessor:
             if keyword in subject:
                 return True
         
-        # Check if email has financial attachments
         if self._has_financial_attachments(message_data):
             return True
         
-        # Additional check: Look for currency symbols or amounts in the email body
         try:
             body = self.extract_email_content(message_data)
             body_text = f"{body.get('body', '')} {body.get('html_body', '')}"
             
-            # Look for currency symbols or amounts
             import re
             currency_patterns = [
                 r'\$\d+\.?\d*',  # $100, $100.50
@@ -110,7 +101,6 @@ class EmailProcessor:
                 if re.search(pattern, body_text, re.IGNORECASE):
                     return True
             
-            # Check for attachment-related keywords that suggest financial documents
             attachment_keywords = [
                 'invoice attached', 'receipt attached', 'statement attached',
                 'bill attached', 'payment attached', 'document attached',
@@ -130,22 +120,18 @@ class EmailProcessor:
         """Check if email has financial-related attachments"""
         payload = message_data.get('payload', {})
         
-        # Check for attachments in multipart messages
         if payload.get('mimeType') == 'multipart/mixed' or payload.get('mimeType') == 'multipart/alternative':
             parts = payload.get('parts', [])
             for part in parts:
                 if part.get('filename'):
                     filename = part.get('filename', '').lower()
-                    # Check for financial document patterns
                     financial_extensions = ['.pdf', '.png', '.jpg', '.jpeg', '.csv', '.xlsx', '.xls']
                     financial_keywords = ['invoice', 'receipt', 'statement', 'payment', 'bill', 'quote']
                     
-                    # Check file extension
                     for ext in financial_extensions:
                         if ext in filename:
                             return True
                     
-                    # Check filename keywords
                     for keyword in financial_keywords:
                         if keyword in filename:
                             return True
@@ -160,13 +146,11 @@ class EmailProcessor:
             
             print(f"DEBUG: Processing PDF with {len(pdf_data)} bytes")
             
-            # Save PDF to temp file for better processing
             with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as temp_file:
                 temp_file.write(pdf_data)
                 temp_file_path = temp_file.name
             
             try:
-                # Read PDF from temp file
                 with open(temp_file_path, 'rb') as pdf_file:
                     pdf_reader = PyPDF2.PdfReader(pdf_file)
                     
@@ -195,7 +179,6 @@ class EmailProcessor:
                 return text
                 
             finally:
-                # Clean up temp file
                 try:
                     os.unlink(temp_file_path)
                 except Exception as e:
@@ -227,12 +210,10 @@ class EmailProcessor:
         Returns:
             Path to temporary file
         """
-        # Get file extension
         _, ext = os.path.splitext(filename)
         if not ext:
             ext = '.tmp'
         
-        # Create temp file with proper extension
         with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as temp_file:
             temp_file.write(data)
             return temp_file.name
@@ -271,10 +252,8 @@ class EmailProcessor:
                 attachment_info['is_financial'] = True
                 break
         
-        # Get attachment data - handle both raw bytes and base64-encoded data
         data = attachment_data.get('data', b'')
         
-        # If data is a string, it's likely base64-encoded (Gmail API format)
         if isinstance(data, str):
             try:
                 data = base64.urlsafe_b64decode(data)
@@ -292,7 +271,6 @@ class EmailProcessor:
             print(f"DEBUG: No data found in attachment")
             return attachment_info
         
-        # Handle different file types
         content_type = attachment_info['content_type']
         temp_file_path = None
         
@@ -328,13 +306,10 @@ class EmailProcessor:
                         print(f"DEBUG: Failed to decode text content")
             elif content_type.startswith('image/'):
                 print(f"DEBUG: Processing image attachment: {attachment_info['filename']}")
-                # For images, we'll mark as financial if filename suggests it
-                # In a real implementation, you might use OCR here
                 attachment_info['text_content'] = f"[Image file: {attachment_info['filename']}]"
                 print(f"DEBUG: Image file detected: {attachment_info['filename']}")
             else:
                 print(f"DEBUG: Processing unknown file type: {attachment_info['filename']}")
-                # Try to extract text from unknown file types
                 try:
                     attachment_info['text_content'] = data.decode('utf-8')
                     print(f"DEBUG: Extracted unknown file type as text: {len(attachment_info['text_content'])} characters")
@@ -347,7 +322,6 @@ class EmailProcessor:
             attachment_info['text_content'] = f"[Error processing file: {str(e)}]"
         
         finally:
-            # Clean up temp file if it was created
             if temp_file_path:
                 self.cleanup_temp_file(temp_file_path)
         
@@ -375,7 +349,6 @@ class EmailProcessor:
                 try:
                     html_data = base64.urlsafe_b64decode(part.get('data', ''))
                     soup = BeautifulSoup(html_data.decode('utf-8'), 'html.parser')
-                    # Remove scripts and styles
                     for script in soup(["script", "style"]):
                         script.decompose()
                     content['html_body'] = soup.get_text()
@@ -388,7 +361,6 @@ class EmailProcessor:
                 if attachment_info['is_financial']:
                     content['has_financial_attachments'] = True
             elif part.get('mimeType') in ['multipart/alternative', 'multipart/mixed', 'multipart/related']:
-                # Recursively handle nested multipart messages
                 print(f"DEBUG: Found nested multipart: {part.get('mimeType')}")
                 nested_parts = part.get('parts', [])
                 self._extract_text_from_parts(nested_parts, content)
@@ -406,7 +378,6 @@ class EmailProcessor:
             'has_financial_attachments': False
         }
         
-        # Extract headers
         headers = message_data.get('payload', {}).get('headers', [])
         for header in headers:
             if header['name'].lower() == 'subject':
@@ -416,21 +387,17 @@ class EmailProcessor:
             elif header['name'].lower() == 'date':
                 content['date'] = header['value']
         
-        # Get the full email body using Gmail API's 'raw' format
         try:
-            # Get the raw email content
             raw_message = self.service.users().messages().get(
                 userId='me',
                 id=message_data['id'],
                 format='raw'
             ).execute()
             
-            # Decode the raw email
             import base64
             raw_data = base64.urlsafe_b64decode(raw_message['raw'])
             email_message = email.message_from_bytes(raw_data)
             
-            # Extract all text content from the email
             body_parts = []
             html_parts = []
             
@@ -450,7 +417,6 @@ class EmailProcessor:
                         try:
                             html = part.get_payload(decode=True).decode('utf-8')
                             soup = BeautifulSoup(html, 'html.parser')
-                            # Remove scripts and styles
                             for script in soup(["script", "style"]):
                                 script.decompose()
                             html_parts.append(soup.get_text())
@@ -459,7 +425,6 @@ class EmailProcessor:
                     elif part.get_filename():  # Attachment
                         try:
                             filename = part.get_filename()
-                            # Get attachment data
                             attachment_data = part.get_payload(decode=True)
                             
                             attachment_info = {
@@ -469,7 +434,6 @@ class EmailProcessor:
                                 'size': len(attachment_data) if attachment_data else 0
                             }
                             
-                            # Process the attachment
                             processed_attachment = self.process_attachment(attachment_info)
                             content['attachments'].append(processed_attachment)
                             
@@ -484,7 +448,6 @@ class EmailProcessor:
             
             extract_parts(email_message)
             
-            # Combine all body parts
             content['body'] = '\n'.join(body_parts)
             content['html_body'] = '\n'.join(html_parts)
             
@@ -497,13 +460,11 @@ class EmailProcessor:
                 
         except Exception as e:
             print(f"DEBUG: Error extracting raw email content: {e}")
-            # Fallback to original method
             payload = message_data.get('payload', {})
             if payload.get('mimeType') == 'multipart/mixed' or payload.get('mimeType') == 'multipart/alternative':
                 parts = payload.get('parts', [])
                 self._extract_text_from_parts(parts, content)
             else:
-                # Simple text message
                 try:
                     body_data = base64.urlsafe_b64decode(payload.get('data', ''))
                     if payload.get('mimeType') == 'text/html':
@@ -520,14 +481,11 @@ class EmailProcessor:
     
     def get_recent_financial_emails(self, days_back: int = 7) -> List[Dict]:
         """Fetch recent financial emails from Gmail using Gmail API"""
-        # Calculate date for query
         date_after = (datetime.now() - timedelta(days=days_back)).strftime('%Y/%m/%d')
         
-        # Build query for recent emails
         query = f'after:{date_after}'
         
         try:
-            # Get messages from Gmail API
             results = self.service.users().messages().list(
                 userId='me', 
                 q=query,
@@ -538,7 +496,6 @@ class EmailProcessor:
             financial_emails = []
             
             for message in messages:
-                # Get full message details
                 msg = self.service.users().messages().get(
                     userId='me', 
                     id=message['id'],
@@ -550,7 +507,6 @@ class EmailProcessor:
                     financial_emails.append(email_content)
                     print(f"Found financial email: {email_content['subject']}")
                     
-                    # Log attachment info
                     if email_content['has_financial_attachments']:
                         print(f"  📎 Has financial attachments")
                         for attachment in email_content['attachments']:
@@ -575,7 +531,6 @@ class EmailProcessor:
             List of email content dictionaries
         """
         try:
-            # Get messages from Gmail API
             results = self.service.users().messages().list(
                 userId='me', 
                 maxResults=email_count
@@ -585,7 +540,6 @@ class EmailProcessor:
             emails = []
             
             for message in messages:
-                # Get full message details
                 msg = self.service.users().messages().get(
                     userId='me', 
                     id=message['id'],
@@ -596,7 +550,6 @@ class EmailProcessor:
                 emails.append(email_content)
                 print(f"Found email: {email_content['subject']}")
                 
-                # Log attachment info
                 if email_content['has_financial_attachments']:
                     print(f"  📎 Has financial attachments")
                     for attachment in email_content['attachments']:
@@ -614,14 +567,11 @@ class EmailProcessor:
         """Get emails that haven't been processed yet"""
         from ..db.models import FinancialTransaction
         
-        # Get all processed email IDs
         processed_ids = db_session.query(FinancialTransaction.email_id).all()
         processed_ids = [row[0] for row in processed_ids]
         
-        # Get recent financial emails
         recent_emails = self.get_recent_financial_emails()
         
-        # Filter out already processed emails
         unprocessed_emails = [
             email for email in recent_emails 
             if email['message_id'] not in processed_ids
