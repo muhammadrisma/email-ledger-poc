@@ -48,6 +48,7 @@ email-ledger-poc/
 ## 📸 **Preview**
 
 <div align="center">
+
 ### Endpoint
 ![Endpoint](preview/endpoint.png)
   
