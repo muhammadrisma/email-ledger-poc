@@ -1,0 +1,241 @@
+# Email Ledger POC - Windows Makefile
+# Common development tasks and shortcuts for Windows
+
+.PHONY: help install install-dev test test-cov lint format clean build run-api run-cli setup demo-data docker-build docker-run docker-stop
+
+# Default target
+help: ## Show this help message
+	@echo "🚀 Email Ledger POC - Development Commands (Windows)"
+	@echo "=================================================="
+	@echo ""
+	@powershell -Command "Get-Content $(MAKEFILE_LIST) | Select-String '^[a-zA-Z_-]+:.*?##' | ForEach-Object { $$line = $$_.Line; if ($$line -match '^([a-zA-Z_-]+):.*?## (.+)') { Write-Host ('{0,-20} {1}' -f $$matches[1], $$matches[2]) -ForegroundColor Cyan } }"
+
+# Installation
+install: ## Install the package in development mode
+	pip install -e .
+
+install-dev: ## Install with development dependencies
+	pip install -e ".[dev,test]"
+
+install-full: ## Install with all dependencies
+	pip install -r requirements.txt
+	pip install -e ".[dev,test]"
+
+# Testing
+test: ## Run tests
+	python -m pytest tests/ -v
+
+test-cov: ## Run tests with coverage
+	python -m pytest tests/ -v --cov=src --cov-report=term-missing --cov-report=html
+
+test-watch: ## Run tests in watch mode
+	python -m pytest tests/ -v -f
+
+# Code Quality
+lint: ## Run linting checks
+	flake8 src/ tests/ --max-line-length=88 --extend-ignore=E203,W503
+	mypy src/ --ignore-missing-imports
+
+format: ## Format code with black and isort
+	black src/ tests/ --line-length=88
+	isort src/ tests/ --profile=black
+
+format-check: ## Check code formatting
+	black src/ tests/ --line-length=88 --check
+	isort src/ tests/ --profile=black --check
+
+# Database
+setup: ## Setup database tables
+	python -m src.cli.main setup
+
+demo-data: ## Generate demo data
+	python scripts/demo_data.py --count 50
+
+clear-data: ## Clear demo data
+	python scripts/demo_data.py --clear
+
+# Running the Application
+run-api: ## Start the API server
+	python -m src.app.api.app
+
+run-api-dev: ## Start API server in development mode
+	uvicorn src.app.api.app:app --reload --host 0.0.0.0 --port 8000
+
+run-cli: ## Run CLI processor once
+	python -m src.cli.main process
+
+run-cli-continuous: ## Run CLI processor continuously
+	python -m src.cli.main process --continuous
+
+run-cli-setup: ## Run CLI setup
+	python -m src.cli.main setup
+
+# Docker
+docker-build: ## Build Docker image
+	docker build -t email-ledger-poc .
+
+docker-run: ## Run with Docker Compose
+	docker-compose up --build
+
+docker-run-detached: ## Run with Docker Compose in background
+	docker-compose up -d --build
+
+docker-stop: ## Stop Docker containers
+	docker-compose down
+
+docker-logs: ## Show Docker logs
+	docker-compose logs -f
+
+docker-clean: ## Clean Docker containers and images
+	docker-compose down -v --rmi all
+
+# Package Management
+build: ## Build package for distribution
+	python build.py
+
+build-wheel: ## Build wheel package
+	python setup.py bdist_wheel
+
+build-sdist: ## Build source distribution
+	python setup.py sdist
+
+clean: ## Clean build artifacts
+	@if exist build rmdir /s /q build
+	@if exist dist rmdir /s /q dist
+	@if exist *.egg-info rmdir /s /q *.egg-info
+	@if exist .pytest_cache rmdir /s /q .pytest_cache
+	@if exist htmlcov rmdir /s /q htmlcov
+	@if exist .coverage del .coverage
+	@for /d /r . %%d in (__pycache__) do @if exist "%%d" rmdir /s /q "%%d"
+	@for /r . %%f in (*.pyc) do @if exist "%%f" del "%%f"
+
+# Development Workflow
+dev-setup: ## Complete development setup
+	@echo "Setting up development environment..."
+	pip install -e ".[dev,test]"
+	copy env.example .env
+	@echo "✅ Development setup complete!"
+	@echo "📝 Please update .env with your configuration"
+
+dev-test: ## Run full development test suite
+	format-check
+	lint
+	test-cov
+
+dev-run: ## Run development environment
+	@echo "Starting development environment..."
+	@echo "API: http://localhost:8000"
+	@echo "Docs: http://localhost:8000/docs"
+	uvicorn src.app.api.app:app --reload --host 0.0.0.0 --port 8000
+
+# Gmail Setup
+setup-gmail: ## Setup Gmail API credentials
+	python scripts/setup_gmail.py
+
+# Environment
+env-create: ## Create .env file from template
+	copy env.example .env
+	@echo "✅ .env file created from template"
+	@echo "📝 Please update .env with your configuration"
+
+env-check: ## Check environment variables
+	@echo "Checking environment variables..."
+	@python -c "import os; from dotenv import load_dotenv; load_dotenv(); print('DATABASE_URL:', os.getenv('DATABASE_URL', 'NOT SET')); print('OPENAI_API_KEY:', 'SET' if os.getenv('OPENAI_API_KEY') else 'NOT SET'); print('GMAIL_CREDENTIALS_FILE:', os.getenv('GMAIL_CREDENTIALS_FILE', 'NOT SET'))"
+
+# Quick Commands
+quick-start: ## Quick start for development
+	@echo "🚀 Quick starting Email Ledger POC..."
+	make install-dev
+	make env-create
+	make setup
+	@echo "✅ Quick start complete!"
+	@echo "📖 Next: make run-api or make run-cli"
+
+quick-test: ## Quick test run
+	@echo "🧪 Running quick tests..."
+	make format-check
+	make lint
+	make test
+	@echo "✅ Quick test complete!"
+
+# Documentation
+docs-serve: ## Serve documentation (if available)
+	@echo "📚 Serving documentation..."
+	@if exist docs (
+		python -m http.server 8080 -d docs
+	) else (
+		echo "No docs directory found. API docs available at http://localhost:8000/docs"
+	)
+
+# Monitoring
+logs: ## Show application logs
+	@echo "📋 Application logs (if running)..."
+	@if exist logs\app.log (
+		powershell -Command "Get-Content logs\app.log -Wait"
+	) else (
+		echo "No log file found. Check console output."
+	)
+
+# Backup and Restore
+backup: ## Backup database (if using PostgreSQL)
+	@echo "💾 Creating database backup..."
+	@where pg_dump >nul 2>&1 && (
+		pg_dump ledger_db > backup_%date:~-4,4%%date:~-10,2%%date:~-7,2%_%time:~0,2%%time:~3,2%%time:~6,2%.sql
+		echo "✅ Backup created"
+	) || (
+		echo "❌ pg_dump not found. Please install PostgreSQL client tools."
+	)
+
+# Performance
+profile: ## Profile the application
+	@echo "📊 Profiling application..."
+	python -m cProfile -o profile.stats -m src.cli.main process
+	@echo "✅ Profile saved to profile.stats"
+
+# Security
+security-check: ## Check for security vulnerabilities
+	@echo "🔒 Checking for security vulnerabilities..."
+	pip install safety
+	safety check
+
+# Dependencies
+deps-update: ## Update dependencies
+	@echo "📦 Updating dependencies..."
+	pip install --upgrade pip
+	pip install --upgrade -r requirements.txt
+	@echo "✅ Dependencies updated"
+
+deps-check: ## Check for outdated dependencies
+	@echo "🔍 Checking for outdated dependencies..."
+	pip list --outdated
+
+# Git Hooks
+pre-commit: ## Run pre-commit hooks
+	@echo "🔧 Running pre-commit hooks..."
+	pre-commit run --all-files
+
+pre-commit-install: ## Install pre-commit hooks
+	@echo "📥 Installing pre-commit hooks..."
+	pre-commit install
+
+# Release
+release: ## Prepare for release
+	@echo "🚀 Preparing release..."
+	make clean
+	make test-cov
+	make lint
+	make format-check
+	make build
+	@echo "✅ Release preparation complete!"
+
+# Helpers
+status: ## Show project status
+	@echo "📊 Project Status"
+	@echo "================="
+	@python --version
+	@pip show email-ledger-poc 2>nul | findstr Version || echo "Package not installed"
+	@if exist .env (echo "Environment file: ✅ Present") else (echo "Environment file: ❌ Missing")
+	@python -c "from src.app.db.models import create_tables; print('Database tables: ✅ Ready')" 2>nul || echo "Database tables: ❌ Not ready"
+
+# Default target
+.DEFAULT_GOAL := help 

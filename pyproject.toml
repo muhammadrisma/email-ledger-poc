@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "email-ledger-poc"
+version = "1.0.0"
+description = "AI-powered email scraping to live ledger system"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Risma", email = "development.risma@gmail.com"}
+]
+keywords = ["email", "ai", "ledger", "financial", "automation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+requires-python = ">=3.11"
+dependencies = [
+    "google-auth",
+    "google-auth-oauthlib",
+    "google-auth-httplib2",
+    "google-api-python-client",
+    "fastapi",
+    "uvicorn",
+    "sqlalchemy",
+    "psycopg2-binary",
+    "pydantic",
+    "python-multipart",
+    "beautifulsoup4",
+    "lxml",
+    "python-dotenv",
+    "openai",
+    "PyPDF2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "black",
+    "isort",
+    "flake8",
+]
+
+[project.scripts]
+email-ledger = "src.cli.main:main"
+
+[project.urls]
+Homepage = "https://github.com/example/email-ledger-poc"
+Documentation = "https://github.com/example/email-ledger-poc#readme"
+Repository = "https://github.com/example/email-ledger-poc"
+"Bug Tracker" = "https://github.com/example/email-ledger-poc/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ['py311']
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["src"] 

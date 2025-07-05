@@ -1,0 +1,30 @@
+# Gmail API dependencies
+google-auth
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
+
+# Web framework
+fastapi
+uvicorn
+
+# Database
+sqlalchemy
+psycopg2-binary
+
+# Data validation
+pydantic
+python-multipart
+
+# HTML parsing
+beautifulsoup4
+lxml
+
+# Environment and utilities
+python-dotenv
+
+# AI/ML
+openai
+
+# PDF processing
+PyPDF2
