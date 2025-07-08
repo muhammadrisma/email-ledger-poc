@@ -39,3 +39,6 @@ reset-db:
 clean:
 	rm -rf build/ dist/ *.egg-info/ __pycache__/ .pytest_cache/
 	find . -type d -name __pycache__ -delete 
+
+demo:
+	streamlit run src/app/demo/streamlit.py

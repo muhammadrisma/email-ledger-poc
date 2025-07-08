@@ -28,3 +28,5 @@ openai
 
 # PDF processing
 PyPDF2
+
+streamlit
